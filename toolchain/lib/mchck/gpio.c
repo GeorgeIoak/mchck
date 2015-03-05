@@ -1,44 +1,57 @@
 #include <mchck.h>
 
-void
-gpio_mode(enum gpio_pin_id pin, enum gpio_pin_mode mode)
+volatile struct GPIO_t *
+gpio_physgpio_from_pin(enum gpio_pin_id pin)
 {
-        int pinnum = gpio_physpin_from_pin(pin);
-        volatile struct GPIO_t *gpio = gpio_physgpio_from_pin(pin);
-
-        /* enable port clock */
-        SIM.scgc5.raw |= 1 << (gpio_portnum_from_pin(pin) + 8);
-
-        /* configure GPIO mode */
-        switch (mode) {
-        case GPIO_MODE_OUTPUT:
-                gpio->pddr |= 1 << pinnum;
-                break;
+        switch (pin_port_from_pin(pin)) {
+        case PIN_PORTA:
+                return (&GPIOA);
+        case PIN_PORTB:
+                return (&GPIOB);
+        case PIN_PORTC:
+                return (&GPIOC);
+        case PIN_PORTD:
+                return (&GPIOD);
         default:
-        case GPIO_MODE_INPUT:
-                gpio->pddr &= ~(1 << pinnum);
+                return (NULL);
+        }
+}
+
+void
+gpio_dir(enum gpio_pin_id pin, enum gpio_dir dir)
+{
+        int pinnum = pin_physpin_from_pin(pin);
+        volatile struct GPIO_t *pinp = gpio_physgpio_from_pin(pin);
+
+        switch (dir) {
+        case GPIO_OUTPUT:
+                pinp->pddr |= 1 << pinnum;
+                goto set_mux;
+        case GPIO_INPUT:
+                pinp->pddr &= ~(1 << pinnum);
+        set_mux:
+                pin_mode(pin, PIN_MODE_MUX_ALT1);
+                break;
+        case GPIO_DISABLE:
+                pin_mode(pin, PIN_MODE_MUX_ANALOG);
                 break;
         }
-
-        volatile struct PCR_t *pcr = &gpio_physport_from_pin(pin)->pcr[pinnum];
-        pcr->mux = PCR_MUX_GPIO;
-        pcr->dse = 1;           /* XXX allow strength selection */
 }
 
 void
 gpio_write(enum gpio_pin_id pin, enum gpio_pin_value val)
 {
-        BITBAND_BIT(gpio_physgpio_from_pin(pin)->pdor, gpio_physpin_from_pin(pin)) = val;
+        BITBAND_BIT(gpio_physgpio_from_pin(pin)->pdor, pin_physpin_from_pin(pin)) = val;
 }
 
 void
 gpio_toggle(enum gpio_pin_id pin)
 {
-        gpio_physgpio_from_pin(pin)->ptor = 1 << gpio_physpin_from_pin(pin);
+        gpio_physgpio_from_pin(pin)->ptor = 1 << pin_physpin_from_pin(pin);
 }
 
 enum gpio_pin_value
 gpio_read(enum gpio_pin_id pin)
 {
-        return (BITBAND_BIT(gpio_physgpio_from_pin(pin)->pdir, gpio_physpin_from_pin(pin)));
+        return (BITBAND_BIT(gpio_physgpio_from_pin(pin)->pdir, pin_physpin_from_pin(pin)));
 }
